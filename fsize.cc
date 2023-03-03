@@ -1,9 +1,9 @@
-#include <iostream>
-#include <vector>
-#include <string>
-#include <future>
 #include <chrono>
 #include <filesystem>
+#include <future>
+#include <iostream>
+#include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -22,7 +22,8 @@ int main() {
     for (const auto& entry : fs::directory_iterator(".")) {
         if (entry.is_directory()) {
             futures.push_back(std::async(std::launch::async, [=] {
-                return std::make_pair(entry.path().string(), calculate_directory_size(entry.path()));
+                return std::make_pair(entry.path().string(),
+                                      calculate_directory_size(entry.path()));
             }));
         }
     }
@@ -34,4 +35,3 @@ int main() {
 
     return 0;
 }
-
