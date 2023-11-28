@@ -34,3 +34,8 @@
 # cmake directories
 build
 Testing
+
+# clion directories
+.idea/
+cmake-build-debug/
+cmake-build-release/
