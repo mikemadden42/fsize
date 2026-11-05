@@ -15,6 +15,9 @@ std::uintmax_t calculate_directory_size(const fs::path& path) {
     for (const fs::recursive_directory_iterator end; !ec && it != end;
          it.increment(ec)) {
         std::error_code entry_ec;
+        if (it->is_symlink(entry_ec) || entry_ec) {
+            continue;
+        }
         if (it->is_regular_file(entry_ec)) {
             auto file_size = it->file_size(entry_ec);
             if (!entry_ec) {
@@ -36,6 +39,9 @@ int main() {
          it.increment(ec)) {
         const auto& entry = *it;
         std::error_code entry_ec;
+        if (entry.is_symlink(entry_ec) || entry_ec) {
+            continue;
+        }
         if (entry.is_directory(entry_ec)) {
             futures.push_back(std::async(std::launch::async, [=] {
                 return std::make_pair(entry.path().string(),
