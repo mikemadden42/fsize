@@ -13,6 +13,8 @@ if (NOT MSVC)
   target_compile_options(fsize PRIVATE -Wall -Wextra -pedantic)
 endif()
 
+install(TARGETS fsize)
+
 enable_testing()
 # The test uses symlinks and chmod, so it only runs on Unix.
 if (UNIX)

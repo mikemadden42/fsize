@@ -16,7 +16,13 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-The binary is `build/fsize`.
+The binary is `build/fsize`. To install it (to `/usr/local/bin` by default):
+
+```sh
+cmake --install build
+```
+
+Add `--prefix ~/.local` to install it under your home directory instead.
 
 ## Usage
 
@@ -65,9 +71,10 @@ lines like `/usr/bin: …`.
   scanned tree is counted twice. `du` counts it once.
 - **The total includes loose files.** Regular files directly in the scanned
   directory are added to the total but do not get a line of their own.
-- **Unreadable folders are skipped silently.** A folder `fsize` has no
-  permission to read contributes 0 bytes, so a total can be lower than the
-  real size when run without enough permissions.
+- **Unreadable folders are skipped.** A folder `fsize` has no permission to
+  read contributes 0 bytes. After the output, `fsize` prints one line to
+  stderr saying how many folders it skipped, such as
+  `warning: 7 folders could not be read; sizes may be low`.
 
 ## Exit status
 
@@ -81,7 +88,7 @@ lines like `/usr/bin: …`.
 If a folder's walk stops partway through (for example, because something
 was deleted while `fsize` was running), `fsize` prints a warning to stderr
 that its size may be incomplete, still reports the other folders and the
-total, and exits with 0.
+total, and exits with 0. Skipping unreadable folders also exits with 0.
 
 ## Testing
 

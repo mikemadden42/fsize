@@ -26,7 +26,7 @@ file(CREATE_LINK "a" "${tree}/dirlink" SYMBOLIC)
 file(CREATE_LINK "top.txt" "${tree}/filelink" SYMBOLIC)
 
 # Runs fsize with the given arguments from working directory `dir` and sets
-# fsize_result and fsize_output in the caller's scope.
+# fsize_result, fsize_output and fsize_error in the caller's scope.
 function(run_fsize dir)
   execute_process(
     COMMAND "${FSIZE}" ${ARGN}
@@ -38,6 +38,13 @@ function(run_fsize dir)
                  "stdout:\n${output}stderr:\n${error}")
   set(fsize_result "${result}" PARENT_SCOPE)
   set(fsize_output "${output}" PARENT_SCOPE)
+  set(fsize_error "${error}" PARENT_SCOPE)
+endfunction()
+
+function(expect_stderr expected)
+  if(NOT fsize_error STREQUAL expected)
+    message(FATAL_ERROR "expected stderr:\n${expected}got:\n${fsize_error}")
+  endif()
 endfunction()
 
 # Checks a successful run. Output order is unspecified, so each expected
@@ -82,6 +89,14 @@ endfunction()
 # No argument: scans the current directory. Largest folder first.
 run_fsize("${tree}")
 expect_output("./a: 10 bytes\n./b: 0 bytes\ntotal: 18 bytes\n")
+
+# b/locked is reported once on stderr. Root can read it anyway, so only
+# check this when not running as root.
+execute_process(COMMAND id -u OUTPUT_VARIABLE uid
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT uid STREQUAL "0")
+  expect_stderr("warning: 1 folder could not be read; sizes may be low\n")
+endif()
 
 # Directory argument.
 run_fsize("${WORK_DIR}" "${tree}")
@@ -140,6 +155,7 @@ file(MAKE_DIRECTORY "${units}/zero")
 run_fsize("${units}")
 expect_output("./big: 1572864 bytes\n./mid: 20480 bytes\n./another: 512 bytes\n"
               "./small: 512 bytes\n./zero: 0 bytes\ntotal: 1594368 bytes\n")
+expect_stderr("")
 
 # -h works before or after the directory.
 foreach(args "-h" "-h;." ".;-h")
