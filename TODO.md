@@ -22,7 +22,7 @@
 
 ## Build and CI
 
-- [ ] Fix the `ctest` step: there's no `enable_testing()` or `add_test`, so CMake 4.x `ctest` prints "No test configuration file found!" and exits 1. Add a test or remove the step.
+- [x] Fix the `ctest` step: there's no `enable_testing()` or `add_test`, so CMake 4.x `ctest` prints "No test configuration file found!" and exits 1. Add a test or remove the step.
 - [ ] Replace `set(CMAKE_CXX_FLAGS ...)` with `target_compile_options(fsize PRIVATE -Wall -Wextra -pedantic)` so user-supplied flags aren't overwritten.
 - [ ] Add `find_package(Threads REQUIRED)` and `target_link_libraries(fsize PRIVATE Threads::Threads)`. `std::async` can fail on older glibc/GCC without it.
 - [ ] Add `set(CMAKE_CXX_STANDARD_REQUIRED ON)`.
@@ -32,4 +32,4 @@
 
 - [ ] Add `#include <cstdint>` and `#include <utility>`. The build works now only because other headers happen to include them.
 - [ ] Expand the README: usage, sample output, and how symlinks and hard links are handled.
-- [ ] Add a CTest case that builds a temporary tree (nested directories, a symlink, an unreadable directory).
+- [x] Add a CTest case that builds a temporary tree (nested directories, a symlink, an unreadable directory).
