@@ -10,7 +10,7 @@
   Fix: use `fs::directory_options::skip_permission_denied` with the `std::error_code` overloads (iterator, `is_regular_file`, `file_size`), and wrap `future.get()` in a try/catch.
 - [x] **Files behind symlinks are counted** (`fsize.cc:18-19`). `entry.is_regular_file()` and `entry.file_size()` follow symlinks, so a link to a large file elsewhere adds its full size, and linked files inside the tree are counted twice. Skip links with `entry.is_symlink()` or check `symlink_status()`.
 - [x] **Top-level symlinked directories are followed** (`fsize.cc:39`). `entry.is_directory()` is true for a symlink to a directory, so the tool walks the target, which may be outside the tree or a duplicate.
-- [ ] **Hard links are counted more than once, and sizes are apparent sizes, not disk usage.** Both differ from `du`. Decide which `fsize` should report and document it.
+- [x] **Hard links are counted more than once, and sizes are apparent sizes, not disk usage.** Both differ from `du`. Decided to keep apparent size and count hard links per link; documented in the README.
 
 ## Design gaps
 
@@ -31,5 +31,5 @@
 ## Minor
 
 - [x] Add `#include <cstdint>` and `#include <utility>`. The build works now only because other headers happen to include them.
-- [ ] Expand the README: usage, sample output, and how symlinks and hard links are handled.
+- [x] Expand the README: usage, sample output, and how symlinks and hard links are handled.
 - [x] Add a CTest case that builds a temporary tree (nested directories, a symlink, an unreadable directory).
