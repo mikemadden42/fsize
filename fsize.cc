@@ -41,6 +41,7 @@ class SizeScanner {
 
     std::uintmax_t size(std::size_t folder) const { return sizes_[folder]; }
     bool failed() const { return failed_; }
+    std::size_t unreadable() const { return unreadable_; }
 
    private:
     struct Job {
@@ -84,10 +85,8 @@ class SizeScanner {
         std::uintmax_t size = 0;
         std::vector<fs::path> subfolders;
         std::error_code ec;
-        for (fs::directory_iterator it(
-                 job.path, fs::directory_options::skip_permission_denied, ec),
-             end;
-             !ec && it != end; it.increment(ec)) {
+        for (fs::directory_iterator it(job.path, ec), end; !ec && it != end;
+             it.increment(ec)) {
             std::error_code entry_ec;
             if (it->is_symlink(entry_ec) || entry_ec) {
                 continue;
@@ -103,7 +102,12 @@ class SizeScanner {
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (ec) {
+        // Folders we aren't allowed to read are counted and reported once in
+        // main, since system folders can have many of them.
+        if (ec == std::errc::permission_denied ||
+            ec == std::errc::operation_not_permitted) {
+            ++unreadable_;
+        } else if (ec) {
             std::cerr << "warning: " << job.path.string() << ": "
                       << ec.message() << " (size may be incomplete)\n";
         }
@@ -121,6 +125,7 @@ class SizeScanner {
     std::size_t pending_ = 0;  // jobs queued or being scanned
     std::vector<std::uintmax_t> sizes_;
     bool failed_ = false;
+    std::size_t unreadable_ = 0;
 };
 
 // Formats a size as bytes, or with -h in powers of 1024 like "1.5M".
@@ -214,6 +219,12 @@ int main(int argc, char* argv[]) {
         std::cout << name << ": " << format_size(size, human) << "\n";
     }
     std::cout << "total: " << format_size(total, human) << "\n";
+
+    if (auto count = scanner.unreadable(); count > 0) {
+        std::cerr << "warning: " << count
+                  << (count == 1 ? " folder" : " folders")
+                  << " could not be read; sizes may be low\n";
+    }
 
     return ec || scanner.failed() ? 1 : 0;
 }
