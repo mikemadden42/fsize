@@ -3,11 +3,15 @@ cmake_minimum_required(VERSION 3.14)
 project(fsize CXX)
 
 set (CMAKE_CXX_STANDARD 17)
-if (NOT MSVC)
-  set(CMAKE_CXX_FLAGS "-Wall -Wextra -pedantic")
-endif()
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(Threads REQUIRED)
 
 add_executable(fsize fsize.cc)
+target_link_libraries(fsize PRIVATE Threads::Threads)
+if (NOT MSVC)
+  target_compile_options(fsize PRIVATE -Wall -Wextra -pedantic)
+endif()
 
 enable_testing()
 # The test uses symlinks and chmod, so it only runs on Unix.
