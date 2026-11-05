@@ -84,3 +84,17 @@ run_fsize("${WORK_DIR}" "${tree}" "${tree}")
 expect_failure()
 
 execute_process(COMMAND chmod u+rwx "${tree}/b/locked")
+
+# Many top-level folders, more than the worker pool has threads. Each holds
+# 2 bytes directly and 3 bytes two levels down, so 5 bytes per folder.
+set(many "${WORK_DIR}/many")
+file(REMOVE_RECURSE "${many}")
+set(expected "")
+foreach(i RANGE 1 300)
+  file(WRITE "${many}/d${i}/x" "x\n")
+  file(WRITE "${many}/d${i}/y/z/w" "yz\n")
+  list(APPEND expected "./d${i}: 5 bytes")
+endforeach()
+list(APPEND expected "total: 1500 bytes")
+run_fsize("${many}")
+expect_lines(${expected})
