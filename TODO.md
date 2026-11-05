@@ -18,7 +18,7 @@
 - [x] Take the path from `argv[1]` instead of always using `.`.
 - [x] Limit the number of threads. `std::launch::async` starts one thread per top-level directory with no cap. Use a worker pool or cap at `std::thread::hardware_concurrency()`.
 - [x] Balance the load. One huge subdirectory keeps a single thread busy while the rest sit idle.
-- [ ] Sort output by size and print human-readable units (K, M, G).
+- [x] Sort output by size and print human-readable units (K, M, G).
 
 ## Build and CI
 

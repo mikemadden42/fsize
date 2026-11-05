@@ -2,6 +2,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <deque>
 #include <exception>
 #include <filesystem>
@@ -122,12 +123,50 @@ class SizeScanner {
     bool failed_ = false;
 };
 
-int main(int argc, char* argv[]) {
-    if (argc > 2) {
-        std::cerr << "usage: fsize [directory]\n";
-        return 1;
+// Formats a size as bytes, or with -h in powers of 1024 like "1.5M".
+std::string format_size(std::uintmax_t bytes, bool human) {
+    if (!human) {
+        return std::to_string(bytes) + " bytes";
     }
-    const fs::path root = argc == 2 ? argv[1] : ".";
+    if (bytes < 1024) {
+        return std::to_string(bytes) + "B";
+    }
+    const char units[] = "KMGTPE";
+    double size = bytes / 1024.0;
+    std::size_t unit = 0;
+    // Move up a unit when one decimal place would round to 1024.0.
+    while (size >= 1023.95 && unit + 1 < sizeof(units) - 1) {
+        size /= 1024;
+        ++unit;
+    }
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.1f%c", size, units[unit]);
+    return buffer;
+}
+
+int usage() {
+    std::cerr << "usage: fsize [-h] [directory]\n";
+    return 1;
+}
+
+int main(int argc, char* argv[]) {
+    bool human = false;
+    fs::path root;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "-h") {
+            human = true;
+        } else if (arg.size() > 1 && arg[0] == '-') {
+            return usage();
+        } else if (root.empty()) {
+            root = arg;
+        } else {
+            return usage();
+        }
+    }
+    if (root.empty()) {
+        root = ".";
+    }
 
     std::error_code ec;
     if (!fs::is_directory(root, ec)) {
@@ -161,12 +200,20 @@ int main(int argc, char* argv[]) {
     SizeScanner scanner(folders);
     scanner.run(std::max(1u, std::thread::hardware_concurrency()));
 
+    // Largest first, with ties in name order.
+    std::vector<std::pair<std::uintmax_t, std::string>> results;
     for (std::size_t i = 0; i < folders.size(); ++i) {
-        std::cout << folders[i].string() << ": " << scanner.size(i)
-                  << " bytes\n";
+        results.emplace_back(scanner.size(i), folders[i].string());
         total += scanner.size(i);
     }
-    std::cout << "total: " << total << " bytes\n";
+    std::sort(results.begin(), results.end(), [](const auto& a, const auto& b) {
+        return a.first != b.first ? a.first > b.first : a.second < b.second;
+    });
+
+    for (const auto& [size, name] : results) {
+        std::cout << name << ": " << format_size(size, human) << "\n";
+    }
+    std::cout << "total: " << format_size(total, human) << "\n";
 
     return ec || scanner.failed() ? 1 : 0;
 }

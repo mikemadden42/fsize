@@ -21,22 +21,33 @@ The binary is `build/fsize`.
 ## Usage
 
 ```sh
-fsize [directory]
+fsize [-h] [directory]
 ```
 
-With no argument, `fsize` scans the current directory.
+With no directory, `fsize` scans the current directory. Folders are listed
+largest first, with ties in name order, and the total comes last.
 
 ```console
 $ fsize
+./photos: 3145728 bytes
 ./music: 524288 bytes
 ./docs: 20480 bytes
-./photos: 3145728 bytes
 total: 3691520 bytes
 ```
 
+`-h` prints sizes in powers of 1024 (`B`, `K`, `M`, `G`, `T`, `P`, `E`) with
+one decimal place. It can go before or after the directory.
+
+```console
+$ fsize -h
+./photos: 3.0M
+./music: 512.0K
+./docs: 20.0K
+total: 3.5M
+```
+
 Folder names are printed under the path you pass, so `fsize /usr` prints
-lines like `/usr/bin: …`. Folders are listed in the order the filesystem
-returns them, which is not sorted.
+lines like `/usr/bin: …`.
 
 ## What is counted
 
@@ -62,7 +73,8 @@ returns them, which is not sorted.
 
 `fsize` exits with 0 on success and 1 if:
 
-- more than one argument is given (it prints `usage: fsize [directory]`),
+- an unknown option or more than one directory is given (it prints
+  `usage: fsize [-h] [directory]`),
 - the path doesn't exist or isn't a directory,
 - the directory can't be listed.
 

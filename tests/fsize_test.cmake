@@ -61,15 +61,27 @@ function(expect_lines)
   endif()
 endfunction()
 
+# Checks a successful run whose output must match exactly, in order. The
+# arguments are joined into the expected output.
+function(expect_output)
+  string(CONCAT expected ${ARGV})
+  if(NOT fsize_result EQUAL 0)
+    message(FATAL_ERROR "fsize exited with ${fsize_result}")
+  endif()
+  if(NOT fsize_output STREQUAL expected)
+    message(FATAL_ERROR "expected output:\n${expected}got:\n${fsize_output}")
+  endif()
+endfunction()
+
 function(expect_failure)
   if(fsize_result EQUAL 0)
     message(FATAL_ERROR "expected fsize to fail")
   endif()
 endfunction()
 
-# No argument: scans the current directory.
+# No argument: scans the current directory. Largest folder first.
 run_fsize("${tree}")
-expect_lines("./a: 10 bytes" "./b: 0 bytes" "total: 18 bytes")
+expect_output("./a: 10 bytes\n./b: 0 bytes\ntotal: 18 bytes\n")
 
 # Directory argument.
 run_fsize("${WORK_DIR}" "${tree}")
@@ -81,6 +93,10 @@ expect_failure()
 run_fsize("${WORK_DIR}" "${tree}/top.txt")
 expect_failure()
 run_fsize("${WORK_DIR}" "${tree}" "${tree}")
+expect_failure()
+
+# Unknown option.
+run_fsize("${WORK_DIR}" -x)
 expect_failure()
 
 execute_process(COMMAND chmod u+rwx "${tree}/b/locked")
@@ -98,3 +114,36 @@ endforeach()
 list(APPEND expected "total: 1500 bytes")
 run_fsize("${many}")
 expect_lines(${expected})
+
+# Sizes that land in different units, a tie, and an empty folder.
+#   big:     1536 KiB  -> 1.5M
+#   mid:       20 KiB  -> 20.0K
+#   another:  512 B    -> 512B  (ties with small, so sorted by name)
+#   small:    512 B    -> 512B
+#   zero:       0 B    -> 0B
+# Total 1594368 bytes, about 1.52 MiB -> 1.5M.
+set(units "${WORK_DIR}/units")
+file(REMOVE_RECURSE "${units}")
+function(make_file path kib)
+  get_filename_component(dir "${path}" DIRECTORY)
+  file(MAKE_DIRECTORY "${dir}")
+  execute_process(COMMAND dd if=/dev/zero "of=${path}" bs=1024 count=${kib}
+                  ERROR_QUIET)
+endfunction()
+make_file("${units}/big/f" 1536)
+make_file("${units}/mid/f" 20)
+string(REPEAT "x" 512 half_kib)
+file(WRITE "${units}/another/f" "${half_kib}")
+file(WRITE "${units}/small/f" "${half_kib}")
+file(MAKE_DIRECTORY "${units}/zero")
+
+run_fsize("${units}")
+expect_output("./big: 1572864 bytes\n./mid: 20480 bytes\n./another: 512 bytes\n"
+              "./small: 512 bytes\n./zero: 0 bytes\ntotal: 1594368 bytes\n")
+
+# -h works before or after the directory.
+foreach(args "-h" "-h;." ".;-h")
+  run_fsize("${units}" ${args})
+  expect_output("./big: 1.5M\n./mid: 20.0K\n./another: 512B\n./small: 512B\n"
+                "./zero: 0B\ntotal: 1.5M\n")
+endforeach()
