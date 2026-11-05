@@ -3,7 +3,9 @@
 Calculate folder sizes in parallel.
 
 `fsize` reports the size of each folder directly inside a directory, plus a
-total. Each folder is walked on its own thread.
+total. The walk is split into one job per folder and shared by a pool of
+worker threads, one per CPU core, so a single large folder doesn't leave the
+other threads idle.
 
 ## Building
 

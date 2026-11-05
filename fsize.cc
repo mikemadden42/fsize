@@ -1,38 +1,126 @@
+#include <algorithm>
+#include <condition_variable>
+#include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <exception>
 #include <filesystem>
-#include <future>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
 
-std::uintmax_t calculate_directory_size(const fs::path& path) {
-    std::uintmax_t size = 0;
-    std::error_code ec;
-    fs::recursive_directory_iterator it(
-        path, fs::directory_options::skip_permission_denied, ec);
-    for (const fs::recursive_directory_iterator end; !ec && it != end;
-         it.increment(ec)) {
-        std::error_code entry_ec;
-        if (it->is_symlink(entry_ec) || entry_ec) {
-            continue;
+// Sizes a set of top-level folders with a fixed pool of worker threads.
+// Each job lists a single folder and queues its subfolders as new jobs, so
+// all workers can share the walk of one large folder.
+class SizeScanner {
+   public:
+    explicit SizeScanner(const std::vector<fs::path>& folders)
+        : sizes_(folders.size()) {
+        for (std::size_t i = 0; i < folders.size(); ++i) {
+            queue_.push_back({folders[i], i});
         }
-        if (it->is_regular_file(entry_ec)) {
-            auto file_size = it->file_size(entry_ec);
-            if (!entry_ec) {
-                size += file_size;
+        pending_ = queue_.size();
+    }
+
+    void run(unsigned thread_count) {
+        std::vector<std::thread> threads;
+        for (unsigned i = 0; i < thread_count; ++i) {
+            threads.emplace_back([this] { work(); });
+        }
+        for (auto& thread : threads) {
+            thread.join();
+        }
+    }
+
+    std::uintmax_t size(std::size_t folder) const { return sizes_[folder]; }
+    bool failed() const { return failed_; }
+
+   private:
+    struct Job {
+        fs::path path;
+        std::size_t folder;  // index of the top-level folder it counts toward
+    };
+
+    void work() {
+        for (;;) {
+            Job job;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                cv_.wait(lock,
+                         [this] { return !queue_.empty() || pending_ == 0; });
+                if (queue_.empty()) {
+                    return;
+                }
+                job = std::move(queue_.front());
+                queue_.pop_front();
+            }
+
+            try {
+                scan(job);
+            } catch (const std::exception& e) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                std::cerr << "error: " << job.path.string() << ": " << e.what()
+                          << "\n";
+                failed_ = true;
+            }
+
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (--pending_ == 0) {
+                cv_.notify_all();
             }
         }
     }
-    if (ec) {
-        std::cerr << "warning: " << path.string() << ": " << ec.message()
-                  << " (size may be incomplete)\n";
+
+    // Lists one folder, adds its regular files to the job's top-level folder,
+    // and queues its subfolders.
+    void scan(const Job& job) {
+        std::uintmax_t size = 0;
+        std::vector<fs::path> subfolders;
+        std::error_code ec;
+        for (fs::directory_iterator it(
+                 job.path, fs::directory_options::skip_permission_denied, ec),
+             end;
+             !ec && it != end; it.increment(ec)) {
+            std::error_code entry_ec;
+            if (it->is_symlink(entry_ec) || entry_ec) {
+                continue;
+            }
+            if (it->is_directory(entry_ec)) {
+                subfolders.push_back(it->path());
+            } else if (it->is_regular_file(entry_ec)) {
+                auto file_size = it->file_size(entry_ec);
+                if (!entry_ec) {
+                    size += file_size;
+                }
+            }
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (ec) {
+            std::cerr << "warning: " << job.path.string() << ": "
+                      << ec.message() << " (size may be incomplete)\n";
+        }
+        sizes_[job.folder] += size;
+        for (auto& subfolder : subfolders) {
+            queue_.push_back({std::move(subfolder), job.folder});
+        }
+        pending_ += subfolders.size();
+        cv_.notify_all();
     }
-    return size;
-}
+
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::deque<Job> queue_;
+    std::size_t pending_ = 0;  // jobs queued or being scanned
+    std::vector<std::uintmax_t> sizes_;
+    bool failed_ = false;
+};
 
 int main(int argc, char* argv[]) {
     if (argc > 2) {
@@ -48,7 +136,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::vector<std::future<std::pair<std::string, std::uintmax_t>>> futures;
+    std::vector<fs::path> folders;
     std::uintmax_t total = 0;
     for (fs::directory_iterator it(root, ec), end; !ec && it != end;
          it.increment(ec)) {
@@ -58,10 +146,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
         if (entry.is_directory(entry_ec)) {
-            futures.push_back(std::async(std::launch::async, [=] {
-                return std::make_pair(entry.path().string(),
-                                      calculate_directory_size(entry.path()));
-            }));
+            folders.push_back(entry.path());
         } else if (entry.is_regular_file(entry_ec)) {
             auto file_size = entry.file_size(entry_ec);
             if (!entry_ec) {
@@ -73,18 +158,15 @@ int main(int argc, char* argv[]) {
         std::cerr << "error: " << root.string() << ": " << ec.message() << "\n";
     }
 
-    int status = ec ? 1 : 0;
-    for (auto& future : futures) {
-        try {
-            auto [name, size] = future.get();
-            std::cout << name << ": " << size << " bytes\n";
-            total += size;
-        } catch (const std::exception& e) {
-            std::cerr << "error: " << e.what() << "\n";
-            status = 1;
-        }
+    SizeScanner scanner(folders);
+    scanner.run(std::max(1u, std::thread::hardware_concurrency()));
+
+    for (std::size_t i = 0; i < folders.size(); ++i) {
+        std::cout << folders[i].string() << ": " << scanner.size(i)
+                  << " bytes\n";
+        total += scanner.size(i);
     }
     std::cout << "total: " << total << " bytes\n";
 
-    return status;
+    return ec || scanner.failed() ? 1 : 0;
 }
